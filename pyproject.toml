@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hodge-spectral-operator"
-version = "0.1.0"
+version = "0.2.0"
 description = "Neural operator learning on manifolds with Hodge decomposition inductive bias"
 readme = "README.md"
 license = {text = "MIT"}
@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = ["neural-operator", "hodge-decomposition", "spectral-methods", "manifold-learning", "physics-informed"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
@@ -29,11 +29,11 @@ dependencies = [
     "scipy>=1.10",
     "scikit-learn>=1.2",
     "toponetx>=0.3",
-    "pyvista>=0.40",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "matplotlib"]
+examples = ["pyvista>=0.40", "matplotlib"]
+dev = ["pytest"]
 
 [tool.setuptools.packages.find]
 include = ["hodge_spectral*"]
