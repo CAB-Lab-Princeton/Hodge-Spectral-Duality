@@ -424,8 +424,7 @@ def train_unified_hsd(model, train_loader, val_loader, epochs, device,
             best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
 
         if logger and ((ep + 1) % 20 == 0 or ep == 0):
-            rs = model.res_scale.item()
-            logger.log(f"  Ep {ep+1:3d}/{epochs} | Train: {tl/nb:.4f} | Val: {avg_v:.4f} | RS: {rs:.3f}")
+            logger.log(f"  Ep {ep+1:3d}/{epochs} | Train: {tl/nb:.4f} | Val: {avg_v:.4f}")
 
         if early(avg_v):
             if logger:

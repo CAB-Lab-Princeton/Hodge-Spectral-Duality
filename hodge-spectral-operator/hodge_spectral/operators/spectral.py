@@ -90,9 +90,9 @@ class HighOrderSpectralOperators:
             self.L2 = self._normalize_laplacian(self.L2)
 
         self._log("[HOST] Computing Eigenbases (Phi0, Phi1, Phi2)...")
-        self.Phi0 = self._compute_basis_fast(self.L0, self.k0)
-        self.Phi1 = self._compute_basis_fast(self.L1, self.k1)
-        self.Phi2 = self._compute_basis_fast(self.L2, self.k2)
+        self.Phi0, self.lam0 = self._compute_basis_fast(self.L0, self.k0)
+        self.Phi1, self.lam1 = self._compute_basis_fast(self.L1, self.k1)
+        self.Phi2, self.lam2 = self._compute_basis_fast(self.L2, self.k2)
 
         self._log("[HOST] Building spectral de Rham operators...")
         self._build_spectral_operators()
@@ -113,29 +113,30 @@ class HighOrderSpectralOperators:
         return D_mat @ L @ D_mat
 
     def _compute_basis_fast(self, L, k):
+        """Returns (eigenvectors, eigenvalues), both sorted by ascending eigenvalue."""
         n = L.shape[0]
         if n == 0 or k <= 0:
-            return np.zeros((n, 0))
+            return np.zeros((n, 0)), np.zeros(0)
 
         k = min(k, n - 1) if n > 1 else 1
         L_float = L.astype(np.float64)
 
         if n < 2000:
             vals, vecs = np.linalg.eigh(L_float.toarray())
-            return vecs[:, :k]
+            return vecs[:, :k], vals[:k]
 
         try:
             vals, vecs = eigsh(L_float, k=k, sigma=-1e-4, which='LM', tol=1e-4, maxiter=5000)
-            return vecs
         except Exception as e:
             self._log(f"[Warn] Shift-invert eigsh failed ({e}), falling back to standard SA...")
             try:
                 vals, vecs = eigsh(L_float, k=k, which='SA', tol=1e-3, maxiter=5000)
-                return vecs
             except Exception:
                 self._log("[Warn] Sparse solver failed completely, using dense fallback.")
                 vals, vecs = np.linalg.eigh(L_float.toarray())
-                return vecs[:, :k]
+                return vecs[:, :k], vals[:k]
+        order = np.argsort(vals)
+        return vecs[:, order], vals[order]
 
     def _fix_sign(self):
         """Fix Z2 sign ambiguity only (safe, no eigenspace rotation).
@@ -194,10 +195,13 @@ class HighOrderSpectralOperators:
         # Standard projection
         c0_raw = (f_vertex @ self.Phi0[:, :self.k0]).astype(np.float32)
 
-        # Eigenvalues of L0
-        L0_Phi0 = self.L0.dot(self.Phi0[:, :self.k0])
-        lambdas = np.sum(self.Phi0[:, :self.k0] * L0_Phi0, axis=0)
-        lambdas = np.maximum(lambdas, 0)
+        # Eigenvalues of L0 (cached by _compute_basis_fast; Rayleigh fallback for
+        # objects restored from old checkpoints that predate the cache)
+        lambdas = getattr(self, 'lam0', None)
+        if lambdas is None or len(lambdas) < self.k0:
+            L0_Phi0 = self.L0.dot(self.Phi0[:, :self.k0])
+            lambdas = np.sum(self.Phi0[:, :self.k0] * L0_Phi0, axis=0)
+        lambdas = np.maximum(lambdas[:self.k0], 0)
 
         # Multi-scale heat diffusion in spectral domain
         t_values = np.logspace(-1, 2, n_heat_scales)
@@ -223,7 +227,9 @@ class HighOrderSpectralOperators:
         # But edge-averaged node values are NOT exact 1-forms,
         # so their curl via B2 IS nonzero. This gives independent 2-form info.
         c2_parts = []
-        abs_B1 = np.abs(self.B1.toarray()) if hasattr(self.B1, 'toarray') else np.abs(self.B1)
+        # abs() keeps scipy sparse matrices sparse; .toarray() here used to
+        # materialize a dense (E, N) matrix (~60 GB for a 50k-node mesh)
+        abs_B1 = abs(self.B1)
         f_avg_edges = (abs_B1 @ f_vertex.T).T / 2.0  # (B, E)
         curl_f_avg = (self.B2 @ f_avg_edges.T).T  # (B, F) -- NONZERO
         c2_avg = (curl_f_avg @ self.Phi2[:, :self.k2]).astype(np.float32)
