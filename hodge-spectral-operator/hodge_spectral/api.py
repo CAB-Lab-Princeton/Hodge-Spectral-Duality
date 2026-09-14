@@ -73,7 +73,8 @@ class HodgeOperator:
                  # Device
                  device=None,
                  # Advanced
-                 heat_kernel_laplacian=None):
+                 heat_kernel_laplacian=None,
+                 l0_mode="combinatorial"):
         """
         Hodge Spectral Operator.
 
@@ -108,6 +109,11 @@ class HodgeOperator:
             --- Advanced ---
             heat_kernel_laplacian: precomputed (N,N) heat kernel Laplacian for L0.
                                   Used by PointCloudAdapter internally.
+            l0_mode: "combinatorial" (default) or "cotan". "cotan" uses the
+                     geometry-consistent cotangent Laplacian for the 0-form
+                     level, aligning eigenvalue order with intrinsic surface
+                     frequency (recommended for meshes with varying triangle
+                     geometry).
         """
         self.device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
         self.input_form, self.output_form = _parse_task(task)
@@ -121,7 +127,8 @@ class HodgeOperator:
         # Build spectral operators
         self.host = HighOrderSpectralOperators(
             self.points, self.faces, k_list=(k, k, k),
-            heat_kernel_laplacian=heat_kernel_laplacian
+            heat_kernel_laplacian=heat_kernel_laplacian,
+            l0_mode=l0_mode
         )
 
         # VectorFluxMapper for 1-form tasks

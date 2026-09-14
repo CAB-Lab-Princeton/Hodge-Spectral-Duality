@@ -21,7 +21,7 @@ class HighOrderSpectralOperators:
     """
 
     def __init__(self, points, faces, k_list=(64, 64, 64), normalize_laplacian=True,
-                 logger=None, heat_kernel_laplacian=None):
+                 logger=None, heat_kernel_laplacian=None, l0_mode="combinatorial"):
         """
         Args:
             points: (N, D) node coordinates
@@ -32,6 +32,12 @@ class HighOrderSpectralOperators:
             heat_kernel_laplacian: optional (N,N) sparse matrix from PointCloudAdapter.
                 If provided, replaces L0 with this smoother Laplacian for
                 better eigenfunctions on noisy point clouds.
+            l0_mode: "combinatorial" (default) builds L0 from the incidence
+                matrix; "cotan" builds the geometry-consistent cotangent
+                Laplacian instead, whose eigenvalue ordering matches the
+                intrinsic frequency of the surface. The degree normalization
+                is tied to the combinatorial operator and is therefore not
+                applied to the cotan L0.
         """
         self.points = points
         self.k0, self.k1, self.k2 = k_list
@@ -73,10 +79,15 @@ class HighOrderSpectralOperators:
         self.L1 = (self.B1 @ self.B1.T + self.B2.T @ self.B2).tocsr()
         self.L2 = (self.B2 @ self.B2.T).tocsr()
 
-        # L0: use heat kernel Laplacian if provided, else combinatorial
+        # L0: heat-kernel override, geometry-consistent cotan, or combinatorial
+        self.l0_mode = l0_mode
         if heat_kernel_laplacian is not None:
             self._log("[HOST] Using heat-kernel-weighted L0 from point cloud adapter")
             self.L0 = heat_kernel_laplacian
+        elif l0_mode == "cotan":
+            from hodge_spectral.operators.geometry import cotan_laplacian
+            self._log("[HOST] Using geometry-consistent (cotan) L0")
+            self.L0 = cotan_laplacian(points, faces)
         else:
             self.L0 = (self.B1.T @ self.B1).tocsr()
 
@@ -85,7 +96,8 @@ class HighOrderSpectralOperators:
 
         if self.normalize:
             self._log("[HOST] Applying Symmetric Normalization to Laplacians...")
-            self.L0 = self._normalize_laplacian(self.L0)
+            if not (l0_mode == "cotan" and heat_kernel_laplacian is None):
+                self.L0 = self._normalize_laplacian(self.L0)
             self.L1 = self._normalize_laplacian(self.L1)
             self.L2 = self._normalize_laplacian(self.L2)
 

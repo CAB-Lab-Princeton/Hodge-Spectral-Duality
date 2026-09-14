@@ -14,7 +14,7 @@ Quick start:
     Y_pred = model.predict(X_test)
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from hodge_spectral.api import HodgeOperator
 
